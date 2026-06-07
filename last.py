@@ -14,41 +14,9 @@ import yaml
 # LOAD CONFIGURATION
 # =======================================
 def load_config():
-    # Load .env file manually
-    if os.path.exists(".env"):
-        with open(".env", "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                if "=" in line:
-                    k, v = line.split("=", 1)
-                    k = k.strip()
-                    v = v.strip()
-                    if v.startswith(('"', "'")) and v.endswith(v[0]):
-                        v = v[1:-1]
-                    os.environ[k] = v
-
-    def expand_env(val):
-        if isinstance(val, dict):
-            return {k: expand_env(v) for k, v in val.items()}
-        elif isinstance(val, list):
-            return [expand_env(v) for v in val]
-        elif isinstance(val, str):
-            match = re.match(r"^\$\{(\w+)\}$", val)
-            if match:
-                env_val = os.environ.get(match.group(1), "")
-                if env_val.isdigit():
-                    return int(env_val)
-                return env_val
-            pattern = re.compile(r"\$\{(\w+)\}")
-            return pattern.sub(lambda m: os.environ.get(m.group(1), ""), val)
-        return val
-
     try:
         with open("teljobs.d/config.yaml", "r", encoding="utf-8") as f:
-            cfg = yaml.safe_load(f)
-            return expand_env(cfg)
+            return yaml.safe_load(f)
     except Exception as e:
         print(f"Config error: {e}")
         sys.exit(1)
@@ -88,6 +56,12 @@ CONFIG = load_config()
 api_id = CONFIG['telegram']['api_id']
 api_hash = CONFIG['telegram']['api_hash']
 PHONE = CONFIG['telegram']['phone']
+
+# Validate Telegram credentials
+if not api_id or api_id == '#' or not isinstance(api_id, int) or not api_hash or api_hash == '#' or not PHONE or PHONE == '#':
+    print("\n[ERROR] Telegram API credentials are missing or invalid!")
+    print("Please configure them directly in 'teljobs.d/config.yaml'.\n")
+    sys.exit(1)
 
 CHANNELS_FILE = CONFIG['paths']['channels_file']
 KEYWORDS_FILE = CONFIG['paths']['keywords_file']
