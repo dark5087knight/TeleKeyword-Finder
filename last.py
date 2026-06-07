@@ -21,36 +21,7 @@ def load_config():
         print(f"Config error: {e}")
         sys.exit(1)
 
-# =======================================
-# LOGGING SETUP
-# =======================================
-log_dir = "logs"
-os.makedirs(log_dir, exist_ok=True)
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-
-formatter = logging.Formatter(
-    '%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %I:%M:%S %p'
-)
-
-file_handler = RotatingFileHandler(
-    os.path.join(log_dir, 'telegram_bot.log'),
-    maxBytes=5*1024*1024,
-    backupCount=3
-)
-file_handler.setFormatter(formatter)
-
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(formatter)
-
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
-
-# =======================================
-# CONFIG VALUES
-# =======================================
+# Load configuration file
 CONFIG = load_config()
 
 api_id = CONFIG['telegram']['api_id']
@@ -67,9 +38,37 @@ CHANNELS_FILE = CONFIG['paths']['channels_file']
 KEYWORDS_FILE = CONFIG['paths']['keywords_file']
 SEND_TO_USERS_FILE = CONFIG['bot']['send_to_users_file']
 SESSION_FILE = CONFIG['paths']['session_file']
-
+LOGS_DIR = CONFIG['paths']['logs_dir']
+LOG_FILE = CONFIG['paths']['log_file']
 RETRY_WAIT = CONFIG['retry']['retry_wait_seconds']
 EXIT_KEY = CONFIG['keyboard']['exit_key']
+
+# =======================================
+# LOGGING SETUP
+# =======================================
+if not os.path.exists(LOGS_DIR):
+    os.makedirs(LOGS_DIR, exist_ok=True)
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+formatter = logging.Formatter(
+    '%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %I:%M:%S %p'
+)
+
+file_handler = RotatingFileHandler(
+    os.path.join(LOGS_DIR, LOG_FILE),
+    maxBytes=5*1024*1024,
+    backupCount=3
+)
+file_handler.setFormatter(formatter)
+
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(formatter)
+
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
 
 # =======================================
 # LOAD FILES

@@ -19,18 +19,40 @@ def load_config():
         with open("teljobs.d/config.yaml", "r", encoding="utf-8") as f:
             return yaml.safe_load(f)
     except FileNotFoundError:
-        logger.error("teljobs.d/config.yaml file not found!")
+        print("[ERROR] teljobs.d/config.yaml file not found!")
         sys.exit(1)
     except yaml.YAMLError as e:
-        logger.error(f"Error parsing teljobs.d/config.yaml: {e}")
+        print(f"[ERROR] Error parsing teljobs.d/config.yaml: {e}")
         sys.exit(1)
+
+# Load configuration file
+CONFIG = load_config()
+
+# Extract configuration values
+api_id = CONFIG['telegram']['api_id']
+api_hash = CONFIG['telegram']['api_hash']
+PHONE = CONFIG['telegram']['phone']
+
+# Validate Telegram credentials
+if not api_id or api_id == '#' or not isinstance(api_id, int) or not api_hash or api_hash == '#' or not PHONE or PHONE == '#':
+    print("\n[ERROR] Telegram API credentials are missing or invalid!")
+    print("Please configure them directly in 'teljobs.d/config.yaml'.\n")
+    sys.exit(1)
+
+SEND_TO_USERS_FILE = CONFIG['bot']['send_to_users_file']
+CHANNELS_FILE = CONFIG['paths']['channels_file']
+KEYWORDS_FILE = CONFIG['paths']['keywords_file']
+SESSION_FILE = CONFIG['paths']['session_file']
+LOGS_DIR = CONFIG['paths']['logs_dir']
+LOG_FILE = CONFIG['paths']['log_file']
+RETRY_WAIT = CONFIG['retry']['retry_wait_seconds']
+KEYBOARD_EXIT_KEY = CONFIG['keyboard']['exit_key']
 
 # =======================================
 #  LOGGING SETUP
 # =======================================
-log_dir = "logs"
-if not os.path.exists(log_dir):
-    os.makedirs(log_dir)
+if not os.path.exists(LOGS_DIR):
+    os.makedirs(LOGS_DIR)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -43,7 +65,7 @@ detailed_formatter = logging.Formatter(
 
 # File handler with rotation
 file_handler = RotatingFileHandler(
-    os.path.join(log_dir, 'telegram_bot.log'),
+    os.path.join(LOGS_DIR, LOG_FILE),
     maxBytes=5*1024*1024,  # 5MB
     backupCount=5
 )
@@ -60,27 +82,6 @@ console_handler.setFormatter(console_formatter)
 # Add handlers to logger
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
-
-# Load configuration file
-CONFIG = load_config()
-
-# Extract configuration values
-api_id = CONFIG['telegram']['api_id']
-api_hash = CONFIG['telegram']['api_hash']
-PHONE = CONFIG['telegram']['phone']
-
-# Validate Telegram credentials
-if not api_id or api_id == '#' or not isinstance(api_id, int) or not api_hash or api_hash == '#' or not PHONE or PHONE == '#':
-    print("\n[ERROR] Telegram API credentials are missing or invalid!")
-    print("Please configure them directly in 'teljobs.d/config.yaml'.\n")
-    sys.exit(1)
-SEND_TO_USERS_FILE = CONFIG['bot']['send_to_users_file']
-CHANNELS_FILE = CONFIG['paths']['channels_file']
-KEYWORDS_FILE = CONFIG['paths']['keywords_file']
-SESSION_FILE = CONFIG['paths']['session_file']
-LOGS_DIR = CONFIG['paths']['logs_dir']
-RETRY_WAIT = CONFIG['retry']['retry_wait_seconds']
-KEYBOARD_EXIT_KEY = CONFIG['keyboard']['exit_key']
 
 # =======================================
 #  LOAD CHANNELS + KEYWORDS + USERS
