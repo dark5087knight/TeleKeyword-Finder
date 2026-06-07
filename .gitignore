@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+
+# Telegram session files (Telethon/Pyrogram session state and DBs)
+*.session
+*.session-journal
+
+# Configuration files with sensitive credentials/API keys
+teljobs.d/config.yaml
+
+# Logs
+logs/
+*.log
+
+# Editor / System files
+*.swp
+*.swo
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
