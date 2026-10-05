@@ -83,13 +83,13 @@ class AlertNotifier:
         date_str = msg_date.strftime("%Y-%m-%d") if msg_date else "N/A"
         time_str = msg_date.strftime("%I:%M:%S %p") if msg_date else "N/A"
 
-        link_line = f"🔗 <b>Link:</b> <a href=\"{post_link}\">Open Post in Telegram</a>\n" if post_link else ""
+        link_line = f"<b>Link:</b> <a href=\"{post_link}\">Open Post in Telegram</a>\n" if post_link else ""
 
         header = (
-            f"🎯 <b>Keyword Matched:</b> {kw_display}\n"
-            f"📢 <b>Channel:</b> {html.escape(channel_name)}\n"
+            f"<b>Keyword Matched:</b> {kw_display}\n"
+            f"<b>Channel:</b> {html.escape(channel_name)}\n"
             f"{link_line}"
-            f"📅 <b>Date:</b> {date_str} {time_str}\n"
+            f"<b>Date:</b> {date_str} {time_str}\n"
             f"────────────────────────\n\n"
         )
 
@@ -118,13 +118,13 @@ class AlertNotifier:
 
         msg_date = message.date
         date_str = msg_date.strftime("%Y-%m-%d %I:%M %p") if msg_date else "N/A"
-        link_line = f"🔗 <b>Link:</b> <a href=\"{post_link}\">Open Post in Telegram</a>\n" if post_link else ""
+        link_line = f"<b>Link:</b> <a href=\"{post_link}\">Open Post in Telegram</a>\n" if post_link else ""
 
         header = (
-            f"🎯 <b>Keyword Matched:</b> {kw_display}\n"
-            f"📢 <b>Channel:</b> {html.escape(channel_name)}\n"
+            f"<b>Keyword Matched:</b> {kw_display}\n"
+            f"<b>Channel:</b> {html.escape(channel_name)}\n"
             f"{link_line}"
-            f"📅 <b>Date:</b> {date_str}\n"
+            f"<b>Date:</b> {date_str}\n"
             f"────────────────────────\n"
         )
         raw_text = (message.raw_text or "").strip()
@@ -168,9 +168,10 @@ class AlertNotifier:
                 # Mode A: Forward original post directly
                 if self.config.forward_original:
                     notice = (
-                        f"🎯 <b>Keyword Matched:</b> <code>{html.escape(kw_str)}</code> from <b>{html.escape(channel_name)}</b>\n"
-                        f"{'🔗 <a href=\"' + post_link + '\">Original Post</a>' if post_link else ''}"
+                        f"<b>Keyword Matched:</b> <code>{html.escape(kw_str)}</code> from <b>{html.escape(channel_name)}</b>\n"
+                        f"{'<a href=\"' + post_link + '\">Original Post</a>' if post_link else ''}"
                     )
+
                     await self.client.send_message(user, notice, parse_mode="html")
                     await self.client.forward_messages(user, message)
                 else:
