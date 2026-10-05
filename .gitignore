@@ -6,13 +6,15 @@ __pycache__/
 venv/
 ENV/
 env/
-
+.env
 # Telegram session files (Telethon/Pyrogram session state and DBs)
 *.session
 *.session-journal
+*.db
+*.db-journal
 
 # Configuration files with sensitive credentials/API keys
-teljobs.d/config.yaml
+.env
 
 # Logs
 logs/

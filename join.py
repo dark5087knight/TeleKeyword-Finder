@@ -1,125 +1,118 @@
+import re
 import asyncio
-import yaml
 import logging
-import sys
-from telethon import TelegramClient
+from telethon import errors
 from telethon.tl.functions.channels import JoinChannelRequest
-from telethon.tl.types import Channel
+from telethon.tl.functions.messages import ImportChatInviteRequest
+from telethon.tl.types import Channel, Chat
 
-# =======================================
-# LOAD CONFIG
-# =======================================
-def load_config():
-    try:
-        with open("teljobs.d/config.yaml", "r", encoding="utf-8") as f:
-            return yaml.safe_load(f)
-    except Exception as e:
-        print(f"Failed to load config: {e}")
-        exit(1)
-
-CONFIG = load_config()
-
-api_id = CONFIG['telegram']['api_id']
-api_hash = CONFIG['telegram']['api_hash']
-PHONE = CONFIG['telegram']['phone']
-
-# Validate Telegram credentials
-if not api_id or api_id == '#' or not isinstance(api_id, int) or not api_hash or api_hash == '#' or not PHONE or PHONE == '#':
-    print("\n[ERROR] Telegram API credentials are missing or invalid!")
-    print("Please configure them directly in 'teljobs.d/config.yaml'.\n")
-    sys.exit(1)
-CHANNELS_FILE = CONFIG['paths']['channels_file']
-SESSION_FILE = CONFIG['paths']['session_file']
-
-# =======================================
-# LOGGING
-# =======================================
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
+from core import load_app_config, TelegramClientManager
+from core.client import clean_channel_identifier
 
 logger = logging.getLogger(__name__)
 
-# =======================================
-# LOAD CHANNELS
-# =======================================
-def load_channels():
-    try:
-        with open(CHANNELS_FILE, "r", encoding="utf-8") as f:
-            return [line.strip() for line in f if line.strip()]
-    except Exception as e:
-        logger.error(f"Failed to load channels file: {e}")
-        return []
 
-CHANNELS = load_channels()
-
-# =======================================
-# CLIENT
-# =======================================
-client = TelegramClient(SESSION_FILE, api_id, api_hash)
-
-# =======================================
-# JOIN LOGIC
-# =======================================
 async def join_channels():
-    await client.start(PHONE)
-    logger.info("Connected to Telegram")
+    config = load_app_config()
+    client_mgr = TelegramClientManager(config)
+    client = client_mgr.client
+
+    if not config.channels:
+        logger.warning(
+            f"No channels found in '{config.channels_file}'. "
+            "Please add channel usernames or links (one per line)."
+        )
+        return
+
+    logger.info(f"Loaded {len(config.channels)} channels from {config.channels_file}")
+    if not await client_mgr.connect_with_retry():
+        logger.error("Could not establish connection to Telegram.")
+        return
 
     success = 0
+    already_joined = 0
     failed = 0
 
-    for channel in CHANNELS:
+    for raw_channel in config.channels:
+        logger.info(f"Processing: {raw_channel}")
+        clean = clean_channel_identifier(raw_channel)
+
         try:
-            logger.info(f"Processing: {channel}")
+            # Handle private invite links (e.g. +hash or joinchat/hash)
+            if "+" in raw_channel or "joinchat/" in raw_channel:
+                match = re.search(r"(?:\+|joinchat/)([a-zA-Z0-9_-]+)", raw_channel)
+                if match:
+                    invite_hash = match.group(1)
+                    try:
+                        await client(ImportChatInviteRequest(invite_hash))
+                        logger.info(f"SUCCESS: Joined via invite link: {raw_channel}")
+                        success += 1
+                    except errors.UserAlreadyParticipantError:
+                        logger.info(f"ALREADY JOINED: {raw_channel}")
+                        already_joined += 1
+                else:
+                    logger.warning(f"Could not extract invite hash from: {raw_channel}")
+                    failed += 1
+                await asyncio.sleep(config.join_delay_seconds)
+                continue
 
-            # Resolve username → entity
-            entity = await client.get_entity(channel)
+            # Standard public channel/group resolution
+            target = int(clean) if re.match(r"^-?\d+$", clean) else clean
+            entity = await client.get_entity(target)
 
-            # Ensure it's a real channel
-            if not isinstance(entity, Channel):
-                logger.warning(f"SKIPPED (Not a channel): {channel}")
+            if not isinstance(entity, (Channel, Chat)):
+                logger.warning(f"SKIPPED (Not a channel or supergroup): {raw_channel}")
                 failed += 1
                 continue
 
-            # Try joining
+            # Attempt to join
             await client(JoinChannelRequest(entity))
-            logger.info(f"SUCCESS: Joined {channel}")
+            logger.info(f"SUCCESS: Joined channel {raw_channel} ('{entity.title}')")
             success += 1
 
-            await asyncio.sleep(3)  # avoid rate limit
+            # Prevent flood wait
+            await asyncio.sleep(config.join_delay_seconds)
+
+        except errors.UserAlreadyParticipantError:
+            logger.info(f"ALREADY JOINED: {raw_channel}")
+            already_joined += 1
+
+        except errors.FloodWaitError as fwe:
+            wait_time = fwe.seconds + 2
+            logger.error(
+                f"FLOOD WAIT: Telegram rate-limit reached. Required cooldown: {fwe.seconds} seconds."
+            )
+            logger.info(f"Sleeping for {wait_time}s before continuing...")
+            await asyncio.sleep(wait_time)
+            failed += 1
+
+        except errors.ChannelPrivateError:
+            logger.warning(f"PRIVATE CHANNEL: You do not have permission to join: {raw_channel}")
+            failed += 1
+
+        except (errors.UsernameNotOccupiedError, errors.UsernameInvalidError):
+            logger.error(f"INVALID USERNAME: Channel does not exist: {raw_channel}")
+            failed += 1
 
         except Exception as e:
             msg = str(e).lower()
-
             if "already" in msg:
-                logger.info(f"ALREADY JOINED: {channel}")
-                success += 1
-            elif "private" in msg:
-                logger.warning(f"PRIVATE CHANNEL: {channel}")
-                failed += 1
-            elif "invalid" in msg or "cannot find" in msg:
-                logger.error(f"INVALID USERNAME: {channel}")
-                failed += 1
-            elif "flood" in msg:
-                logger.error("FLOOD WAIT detected. Sleeping 60 seconds...")
-                await asyncio.sleep(60)
-                failed += 1
+                logger.info(f"ALREADY JOINED: {raw_channel}")
+                already_joined += 1
             else:
-                logger.error(f"FAILED: {channel} -> {e}")
+                logger.error(f"FAILED to join {raw_channel}: {e}")
                 failed += 1
 
     await client.disconnect()
 
-    logger.info("===================================")
-    logger.info(f"JOIN COMPLETE")
-    logger.info(f"SUCCESS: {success}")
-    logger.info(f"FAILED: {failed}")
-    logger.info("===================================")
+    logger.info("========================================")
+    logger.info("CHANNEL JOIN SUMMARY")
+    logger.info(f"  Total Processed : {len(config.channels)}")
+    logger.info(f"  Newly Joined    : {success}")
+    logger.info(f"  Already Member  : {already_joined}")
+    logger.info(f"  Failed / Skipped: {failed}")
+    logger.info("========================================")
 
 
-# =======================================
-# MAIN
-# =======================================
 if __name__ == "__main__":
     asyncio.run(join_channels())

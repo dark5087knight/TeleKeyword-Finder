@@ -1,0 +1,83 @@
+# ==============================================================================
+# Telegram Keyword Monitor & Alert Bot - Configuration
+# ==============================================================================
+# Copy this file to "teljobs.d/config.yaml" and fill in your actual credentials.
+# Note: You can also use environment variables as overrides:
+#   TELEGRAM_API_ID, TELEGRAM_API_HASH, TELEGRAM_PHONE
+# ==============================================================================
+
+# Telegram API Credentials
+# Get api_id and api_hash from https://my.telegram.org (under API Development Tools)
+telegram:
+  api_id: 12345678               # Your integer API ID (e.g. 12345678)
+  api_hash: "your_api_hash_here" # Your 32-character API Hash string
+  phone: "+1234567890"           # Your international phone number with country code
+
+# Bot & Notification Settings
+bot:
+  # Users list file - one username per line (users to send matched posts to)
+  send_to_users_file: "teljobs.d/send_to_users.conf"
+
+  # Forward mode:
+  #   false: Sends a formatted notification card with preview & direct post link (Recommended)
+  #   true:  Forwards the original Telegram post directly (preserves media/flyers/files)
+  forward_original: false
+
+  # Include media: If forward_original is false, still forward media attachments if present
+  attach_media: true
+
+  # Auto-read messages after processing them
+  auto_read: true
+
+# File Paths
+paths:
+  # Channels list file - usernames, links, or channel IDs to monitor
+  channels_file: "teljobs.d/channels.conf"
+
+  # Keywords list file - keywords/phrases to search for
+  keywords_file: "teljobs.d/keywords.conf"
+
+  # Exclude keywords file (optional) - posts containing any of these will be ignored
+  exclude_keywords_file: "teljobs.d/exclude_keywords.conf"
+
+  # Session file name (will be saved in the project root or specified path)
+  session_file: "session_file"
+
+  # SQLite database to track seen posts and prevent duplicate alerts
+  seen_db_file: "teljobs.d/seen_messages.db"
+
+  # Directory for log files
+  logs_dir: "logs"
+
+  # Main log file name
+  log_file: "telegram_bot.log"
+
+# Logging Configuration
+logging:
+  # File log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: "DEBUG"
+
+  # Terminal log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  console_level: "INFO"
+
+  # Maximum size of single log file before rotation (5MB = 5242880 bytes)
+  max_log_size: 5242880
+
+  # Number of rotated log files to keep
+  backup_count: 5
+
+# Network & Reconnection Settings
+retry:
+  # Seconds to wait between reconnection attempts on network drop
+  retry_wait_seconds: 15
+
+  # Delay in seconds between joining channels in join.py to prevent flood bans
+  join_delay_seconds: 5
+
+# Interactive Keyboard Settings (optional for desktop terminals)
+keyboard:
+  # Set to true to allow pressing an exit key in the terminal
+  enabled: true
+
+  # Key to trigger graceful exit (e.g., "esc" or "enter")
+  exit_key: "esc"
