@@ -36,7 +36,7 @@ This application is ideal for tracking job opportunities, news, specific topics,
 ├── join.py                     # Script to join channels safely with flood-wait protection
 ├── last.py                     # Script to scan recent messages (with --limit and --force)
 ├── main.py                     # Main real-time monitoring and alerting bot
-├── teljobs.d/                  # Configuration directory
+├── config.d/                   # Configuration directory
 │   ├── config.yaml.example     # Template settings and Telegram credentials
 │   ├── channels.conf           # List of Telegram channels to monitor
 │   ├── keywords.conf           # List of keywords to search for
@@ -69,18 +69,18 @@ pip install -r requirements.txt
 
 ### 3. Configuration
 
-All configuration is located in the `teljobs.d/` directory:
+All configuration is located in the `config.d/` directory:
 
 1. **Telegram API Credentials**:
    Copy the example template to create your `config.yaml`:
    ```bash
    # On Windows:
-   copy teljobs.d\config.yaml.example teljobs.d\config.yaml
+   copy config.d\config.yaml.example config.d\config.yaml
 
    # On Linux/macOS:
-   cp teljobs.d/config.yaml.example teljobs.d/config.yaml
+   cp config.d/config.yaml.example config.d/config.yaml
    ```
-   Open `teljobs.d/config.yaml` and enter your credentials:
+   Open `config.d/config.yaml` and enter your credentials:
    ```yaml
    telegram:
      api_id: 12345678               # Your integer API ID
@@ -89,14 +89,14 @@ All configuration is located in the `teljobs.d/` directory:
    ```
    *(Alternatively, you can export `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, and `TELEGRAM_PHONE` as environment variables).*
 
-2. **Monitored Channels (`teljobs.d/channels.conf`)**:
+2. **Monitored Channels (`config.d/channels.conf`)**:
    Add usernames, links, or channel IDs (one per line). Lines starting with `#` are ignored:
    ```text
    @job_channel_1
    https://t.me/remote_jobs
    ```
 
-3. **Target Keywords (`teljobs.d/keywords.conf`)**:
+3. **Target Keywords (`config.d/keywords.conf`)**:
    Add the keywords or phrases you want to monitor (one per line):
    ```text
    Python
@@ -106,7 +106,7 @@ All configuration is located in the `teljobs.d/` directory:
    DevOps
    ```
 
-4. **Negative Keywords (`teljobs.d/exclude_keywords.conf`)** *(Optional)*:
+4. **Negative Keywords (`config.d/exclude_keywords.conf`)** *(Optional)*:
    Posts containing any of these keywords will be ignored:
    ```text
    Unpaid
@@ -114,7 +114,7 @@ All configuration is located in the `teljobs.d/` directory:
    Internship
    ```
 
-5. **Recipients (`teljobs.d/send_to_users.conf`)**:
+5. **Recipients (`config.d/send_to_users.conf`)**:
    Add the Telegram usernames of recipients (one per line):
    ```text
    @my_telegram_user

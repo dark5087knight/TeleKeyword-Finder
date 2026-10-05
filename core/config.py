@@ -9,11 +9,12 @@ from typing import List, Dict, Any, Optional
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG_PATHS = [
+    Path("config.d/config.yaml"),
     Path("teljobs.d/config.yaml"),
     Path("config.yaml"),
 ]
 
-EXAMPLE_CONFIG_PATH = Path("teljobs.d/config.yaml.example")
+EXAMPLE_CONFIG_PATH = Path("config.d/config.yaml.example")
 
 
 def load_lines(file_path: str | Path, required: bool = True) -> List[str]:
@@ -52,12 +53,12 @@ class AppConfig:
     exclude_keywords: List[str] = field(default_factory=list)
     recipients: List[str] = field(default_factory=list)
 
-    channels_file: str = "teljobs.d/channels.conf"
-    keywords_file: str = "teljobs.d/keywords.conf"
-    exclude_keywords_file: str = "teljobs.d/exclude_keywords.conf"
-    send_to_users_file: str = "teljobs.d/send_to_users.conf"
+    channels_file: str = "config.d/channels.conf"
+    keywords_file: str = "config.d/keywords.conf"
+    exclude_keywords_file: str = "config.d/exclude_keywords.conf"
+    send_to_users_file: str = "config.d/send_to_users.conf"
     session_file: str = "session_file"
-    seen_db_file: str = "teljobs.d/seen_messages.db"
+    seen_db_file: str = "config.d/seen_messages.db"
     logs_dir: str = "logs"
     log_file: str = "telegram_bot.log"
 
@@ -141,14 +142,14 @@ def load_app_config(config_path: Optional[str | Path] = None) -> AppConfig:
         # Check if environment variables are set before failing
         if not (os.getenv("TELEGRAM_API_ID") and os.getenv("TELEGRAM_API_HASH") and os.getenv("TELEGRAM_PHONE")):
             print("\n" + "=" * 70)
-            print("[ERROR] Configuration file 'teljobs.d/config.yaml' not found!")
+            print("[ERROR] Configuration file 'config.d/config.yaml' not found!")
             print("=" * 70)
             if EXAMPLE_CONFIG_PATH.exists():
                 print(f"A template is available at: {EXAMPLE_CONFIG_PATH}")
-                print(f"Run: copy {EXAMPLE_CONFIG_PATH} teljobs.d\\config.yaml")
-                print("Then open teljobs.d/config.yaml and insert your Telegram API credentials.")
+                print(f"Run: copy {EXAMPLE_CONFIG_PATH} config.d\\config.yaml")
+                print("Then open config.d/config.yaml and insert your Telegram API credentials.")
             else:
-                print("Please create 'teljobs.d/config.yaml' with your Telegram credentials.")
+                print("Please create 'config.d/config.yaml' with your Telegram credentials.")
             print("=" * 70 + "\n")
             sys.exit(1)
 
@@ -173,7 +174,7 @@ def load_app_config(config_path: Optional[str | Path] = None) -> AppConfig:
     if not api_id or not api_hash or api_hash == "#" or not phone or phone == "#":
         print("\n" + "=" * 70)
         print("[ERROR] Telegram API credentials (api_id, api_hash, phone) are missing or invalid!")
-        print("Please configure them in 'teljobs.d/config.yaml' or set environment variables:")
+        print("Please configure them in 'config.d/config.yaml' or set environment variables:")
         print("  - TELEGRAM_API_ID")
         print("  - TELEGRAM_API_HASH")
         print("  - TELEGRAM_PHONE")
@@ -181,12 +182,12 @@ def load_app_config(config_path: Optional[str | Path] = None) -> AppConfig:
         sys.exit(1)
 
     # Resolve paths
-    channels_file = paths_sec.get("channels_file", "teljobs.d/channels.conf")
-    keywords_file = paths_sec.get("keywords_file", "teljobs.d/keywords.conf")
-    exclude_keywords_file = paths_sec.get("exclude_keywords_file", "teljobs.d/exclude_keywords.conf")
-    send_to_users_file = bot_sec.get("send_to_users_file", paths_sec.get("send_to_users_file", "teljobs.d/send_to_users.conf"))
+    channels_file = paths_sec.get("channels_file", "config.d/channels.conf")
+    keywords_file = paths_sec.get("keywords_file", "config.d/keywords.conf")
+    exclude_keywords_file = paths_sec.get("exclude_keywords_file", "config.d/exclude_keywords.conf")
+    send_to_users_file = bot_sec.get("send_to_users_file", paths_sec.get("send_to_users_file", "config.d/send_to_users.conf"))
     session_file = paths_sec.get("session_file", "session_file")
-    seen_db_file = paths_sec.get("seen_db_file", "teljobs.d/seen_messages.db")
+    seen_db_file = paths_sec.get("seen_db_file", "config.d/seen_messages.db")
     logs_dir = paths_sec.get("logs_dir", "logs")
     log_file = paths_sec.get("log_file", "telegram_bot.log")
 

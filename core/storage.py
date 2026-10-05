@@ -14,7 +14,7 @@ class SeenMessageStore:
     Prevents duplicate notifications across bot restarts or history catch-ups.
     """
 
-    def __init__(self, db_path: Union[str, Path] = "teljobs.d/seen_messages.db"):
+    def __init__(self, db_path: Union[str, Path] = "config.d/seen_messages.db"):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()

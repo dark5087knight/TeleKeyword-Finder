@@ -15,6 +15,7 @@ env/
 
 # Configuration files with sensitive credentials/API keys
 .env
+config.d/config.yaml
 
 # Logs
 logs/

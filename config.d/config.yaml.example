@@ -1,7 +1,7 @@
 # ==============================================================================
 # Telegram Keyword Monitor & Alert Bot - Configuration
 # ==============================================================================
-# Copy this file to "teljobs.d/config.yaml" and fill in your actual credentials.
+# Copy this file to "config.d/config.yaml" and fill in your actual credentials.
 # Note: You can also use environment variables as overrides:
 #   TELEGRAM_API_ID, TELEGRAM_API_HASH, TELEGRAM_PHONE
 # ==============================================================================
@@ -16,7 +16,7 @@ telegram:
 # Bot & Notification Settings
 bot:
   # Users list file - one username per line (users to send matched posts to)
-  send_to_users_file: "teljobs.d/send_to_users.conf"
+  send_to_users_file: "config.d/send_to_users.conf"
 
   # Forward mode:
   #   false: Sends a formatted notification card with preview & direct post link (Recommended)
@@ -32,19 +32,19 @@ bot:
 # File Paths
 paths:
   # Channels list file - usernames, links, or channel IDs to monitor
-  channels_file: "teljobs.d/channels.conf"
+  channels_file: "config.d/channels.conf"
 
   # Keywords list file - keywords/phrases to search for
-  keywords_file: "teljobs.d/keywords.conf"
+  keywords_file: "config.d/keywords.conf"
 
   # Exclude keywords file (optional) - posts containing any of these will be ignored
-  exclude_keywords_file: "teljobs.d/exclude_keywords.conf"
+  exclude_keywords_file: "config.d/exclude_keywords.conf"
 
   # Session file name (will be saved in the project root or specified path)
   session_file: "session_file"
 
   # SQLite database to track seen posts and prevent duplicate alerts
-  seen_db_file: "teljobs.d/seen_messages.db"
+  seen_db_file: "config.d/seen_messages.db"
 
   # Directory for log files
   logs_dir: "logs"
