@@ -55,7 +55,11 @@ class KeywordMatcher:
         else:
             right = r"(?!\w)"
 
-        return re.compile(rf"{left}{escaped}{right}", re.IGNORECASE)
+        # Use case-sensitive matching for short 2-letter uppercase English acronyms (e.g. IT, HR, QA)
+        # to prevent matching common English pronouns/words like 'it', 'at', etc.
+        flags = 0 if (len(keyword) <= 2 and keyword.isupper() and keyword.isascii() and keyword.isalpha()) else re.IGNORECASE
+
+        return re.compile(rf"{left}{escaped}{right}", flags)
 
     def is_excluded(self, text: str) -> Optional[str]:
         """
