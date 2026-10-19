@@ -149,7 +149,3 @@ On first launch, you will be prompted for your Telegram login code. After authen
 Open your Telegram app and message the Upper Agent to start creating monitoring tasks.
 
 ---
-
-## License
-
-This project is open-source and free to use under the MIT License.
