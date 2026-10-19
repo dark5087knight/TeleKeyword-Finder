@@ -1,157 +1,152 @@
-# Telegram Keyword Monitor & Alert Bot
+# TeleKeyword Finder
 
-A robust, production-ready Python application built with **Telethon** that monitors specified Telegram channels in real-time, scans posts for user-defined keywords, and immediately forwards matched messages to designated Telegram recipients.
+A multi-agent Telegram monitoring system where a master agent orchestrates dedicated sub-agents to monitor channels, detect keyword matches, and forward results -- all controlled through natural Telegram chat.
 
-This application is ideal for tracking job opportunities, news, specific topics, or brand mentions across a large number of Telegram groups and channels.
+---
+
+## Architecture Overview
+
+The system is built around a two-tier agent model:
+
+### Upper Agent (Master)
+
+The Upper Agent is the central controller. It manages:
+
+- All Telegram sessions and connections
+- Creation, lifecycle, and coordination of Sub-Agents
+- Direct conversation with the user via Telegram chat
+- Task assignment and routing
+
+The user interacts exclusively with the Upper Agent through regular Telegram messages. There is no separate UI, CLI, or dashboard -- Telegram is the interface.
+
+### Sub-Agents (Workers)
+
+Each Sub-Agent is a dedicated worker created by the Upper Agent to handle a single monitoring task. A Sub-Agent:
+
+- Receives its orders from the Upper Agent (channels to watch, keywords to match, recipients to notify)
+- Monitors its assigned channels in real-time
+- Detects posts matching the specified criteria
+- Forwards matched posts to the designated recipients
+- Reports status back to the Upper Agent
+
+Sub-Agents are created on demand and operate independently once spawned.
+
+---
+
+## How It Works
+
+1. The user opens a Telegram chat with the Upper Agent (a bot or userbot account).
+2. The user sends a natural-language task, for example:
+
+   ```
+   Monitor these channels: @channel_one, @channel_two, @dev_jobs
+   Look for posts about: Python developer, remote work, backend engineer
+   When you find matches, send them to: @my_username
+   ```
+
+3. The Upper Agent parses the request and creates a new Sub-Agent dedicated to this task.
+4. The Sub-Agent begins monitoring the specified channels, scanning every new post for the requested keywords.
+5. When a match is found, the Sub-Agent forwards the post to the specified recipient(s).
+6. The user can message the Upper Agent at any time to:
+   - Create new monitoring tasks
+   - List active tasks and their Sub-Agents
+   - Modify or stop existing tasks
+   - Get status reports
 
 ---
 
 ## Key Features
 
-- **Real-Time Targeted Monitoring**: Uses targeted event dispatching (`chats=...`) to only listen to configured channels, cutting unnecessary CPU and network overhead by 90%+.
-- **Catch-up Processing**: Scans and processes unread messages upon startup, ensuring you never miss a match when offline.
-- **Smart Keyword Matching**: Precompiled, context-aware regular expressions supporting whole-word matching, multiple languages (Unicode/Arabic/Cyrillic), and special technical keywords (`C++`, `C#`, `.NET`, `Node.js`).
-- **Negative / Exclusion Keywords**: Filter out spam or unwanted posts automatically (e.g. `Unpaid`, `Internship`, `Crypto`).
-- **Deduplication Engine**: Built-in SQLite database (`seen_messages.db`) ensures you never receive duplicate notifications for the same message across bot restarts or manual scans.
-- **Crash-Proof Formatting & Direct Links**: Safe HTML delivery with direct, clickable links to the original post (`https://t.me/...`) and automatic 4096-character limit truncation protection.
-- **Media Preservation**: Automatically attaches and forwards image flyers, PDFs, or documents attached to matched posts.
-- **Multiple Recipients**: Dispatches matched posts to one or more configured Telegram users with rate-limit cushioning.
-- **Channel Auto-Joiner**: Automatically joins public channels, supergroups, and private invite links with accurate Telegram `FloodWaitError` cooldown handling.
-- **Docker & Cloud Ready**: Supports configuration via YAML as well as environment variable overrides (`TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_PHONE`).
-- **Graceful Shutdown**: Cleanly stops via `SIGINT`/`SIGTERM` or interactive terminal exit key (`ESC` or `Enter`).
+- **Chat-Based Control**: The entire system is operated through Telegram chat with the Upper Agent. No terminal, no config files to edit manually, no restarts needed.
+- **Dynamic Task Creation**: Each monitoring request spawns a dedicated Sub-Agent. Multiple tasks can run in parallel, each watching different channels for different keywords.
+- **Agent Isolation**: Sub-Agents are independent. One failing or being stopped does not affect others.
+- **Real-Time Monitoring**: Sub-Agents use Telegram event handlers to detect new posts the moment they appear.
+- **Smart Keyword Matching**: Context-aware matching with support for whole-word detection, multiple languages (Unicode, Arabic, Cyrillic), and special technical keywords (C++, C#, .NET, Node.js).
+- **Negative Keywords**: Exclude unwanted posts automatically (e.g., filter out spam, unpaid offers, or irrelevant topics).
+- **Deduplication**: Built-in message tracking ensures the same post is never forwarded twice.
+- **Media Forwarding**: Matched posts with attached images, documents, or files are forwarded with their media intact.
+- **Direct Links**: Every forwarded match includes a clickable link to the original post.
 
 ---
 
-## Directory Structure
+## Agent Communication Flow
 
-```text
-├── core/                       # Shared robust application core
-│   ├── __init__.py
-│   ├── client.py               # Telethon client lifecycle & entity resolution
-│   ├── config.py               # YAML & environment variable configuration loader
-│   ├── matcher.py              # Precompiled keyword & exclusion matcher
-│   ├── notifier.py             # Crash-proof HTML alert builder & media delivery
-│   ├── shutdown.py             # Signal & keyboard-driven graceful shutdown
-│   └── storage.py              # SQLite seen-messages deduplication database
-├── join.py                     # Script to join channels safely with flood-wait protection
-├── last.py                     # Script to scan recent messages (with --limit and --force)
-├── main.py                     # Main real-time monitoring and alerting bot
-├── config.d/                   # Configuration directory
-│   ├── config.yaml.example     # Template settings and Telegram credentials
-│   ├── channels.conf           # List of Telegram channels to monitor
-│   ├── keywords.conf           # List of keywords to search for
-│   ├── exclude_keywords.conf   # Optional list of keywords to ignore/exclude
-│   └── send_to_users.conf      # List of Telegram users to receive matches
-├── requirements.txt            # Python dependencies
-└── .gitignore                  # Git ignore rules for session databases, .db, and configs
+```
+User (Telegram Chat)
+    |
+    v
+Upper Agent (Master)
+    |
+    |--- Creates ---> Sub-Agent A (watches @channel_1, @channel_2 for "Python")
+    |                       |
+    |                       +---> Forwards matches to @recipient_1
+    |
+    |--- Creates ---> Sub-Agent B (watches @news_feed for "breaking, urgent")
+    |                       |
+    |                       +---> Forwards matches to @recipient_2
+    |
+    +--- Creates ---> Sub-Agent C (watches @jobs_channel for "remote backend")
+                            |
+                            +---> Forwards matches to @recipient_1, @recipient_3
 ```
 
 ---
 
-## Installation & Setup
+## Setup
 
-### 1. Prerequisites
-- **Python 3.8+**
-- **Telegram API Credentials**: Obtain your `api_id` and `api_hash` from [my.telegram.org](https://my.telegram.org) under API Development Tools.
+### Prerequisites
 
-### 2. Install Dependencies
+- Python 3.8+
+- Telegram API credentials (api_id, api_hash) from [my.telegram.org](https://my.telegram.org)
+- A Telegram account for the Upper Agent to operate under
+
+### Installation
+
 ```bash
-# Optional: Create and activate a virtual environment
 python -m venv .venv
-# On Windows:
+
+# Windows:
 .venv\Scripts\activate
-# On Linux/macOS:
+
+# Linux/macOS:
 source .venv/bin/activate
 
-# Install required packages:
 pip install -r requirements.txt
 ```
 
-### 3. Configuration
+### Configuration
 
-All configuration is located in the `config.d/` directory:
+Copy and fill in the environment file:
 
-1. **Telegram API Credentials**:
-   Copy the example template to create your `config.yaml`:
-   ```bash
-   # On Windows:
-   copy config.d\config.yaml.example config.d\config.yaml
+```bash
+# Windows:
+copy .env.example .env
 
-   # On Linux/macOS:
-   cp config.d/config.yaml.example config.d/config.yaml
-   ```
-   Open `config.d/config.yaml` and enter your credentials:
-   ```yaml
-   telegram:
-     api_id: 12345678               # Your integer API ID
-     api_hash: "your_api_hash_here" # Your API Hash string
-     phone: "+1234567890"           # Your phone number with country code
-   ```
-   *(Alternatively, you can export `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, and `TELEGRAM_PHONE` as environment variables).*
+# Linux/macOS:
+cp .env.example .env
+```
 
-2. **Monitored Channels (`config.d/channels.conf`)**:
-   Add usernames, links, or channel IDs (one per line). Lines starting with `#` are ignored:
-   ```text
-   @job_channel_1
-   https://t.me/remote_jobs
-   ```
+Set your Telegram API credentials in `.env`:
 
-3. **Target Keywords (`config.d/keywords.conf`)**:
-   Add the keywords or phrases you want to monitor (one per line):
-   ```text
-   Python
-   C++
-   .NET
-   Remote
-   DevOps
-   ```
-
-4. **Negative Keywords (`config.d/exclude_keywords.conf`)** *(Optional)*:
-   Posts containing any of these keywords will be ignored:
-   ```text
-   Unpaid
-   Volunteer
-   Internship
-   ```
-
-5. **Recipients (`config.d/send_to_users.conf`)**:
-   Add the Telegram usernames of recipients (one per line):
-   ```text
-   @my_telegram_user
-   ```
+```
+TELEGRAM_API_ID=12345678
+TELEGRAM_API_HASH=your_api_hash_here
+TELEGRAM_PHONE=+1234567890
+```
 
 ---
 
 ## Usage
 
-### 1. Join Channels (`join.py`)
-Automatically joins all target channels with flood-wait protection:
-```bash
-python join.py
-```
+Start the Upper Agent:
 
-### 2. Run Main Monitor (`main.py`)
-Starts real-time monitoring and unread catch-up:
 ```bash
 python main.py
 ```
-- First time: Prompts for your Telegram login confirmation code.
-- Scans and alerts on unread messages received while offline.
-- Listens for new messages in real-time.
-- Press `ESC` (or `Enter` / `Ctrl+C`) to shut down gracefully.
 
-### 3. Check Recent History (`last.py`)
-Scan recent channel history without running the real-time listener:
-```bash
-# Scan the last 30 messages in all channels (default):
-python last.py
+On first launch, you will be prompted for your Telegram login code. After authentication, the Upper Agent is live and listening for your messages in Telegram.
 
-# Scan custom number of messages (e.g. 50):
-python last.py --limit 50
-
-# Force re-sending alerts even if previously seen:
-python last.py --limit 20 --force
-```
+Open your Telegram app and message the Upper Agent to start creating monitoring tasks.
 
 ---
 
