@@ -128,9 +128,6 @@ Forwarding matches to: @dev_recruiter
 │   ├── workers/                # Execution worker, relevance funnel
 │   ├── telegram/               # Telethon session, source, and delivery
 │   └── security/               # Secret store, access control, log redaction
-└── tests/
-    ├── fakes.py                # Test doubles (FakeLLM, FakeClock, FakeChannelSource)
-    └── unit/                   # Unit test suite
 ```
 
 ---
