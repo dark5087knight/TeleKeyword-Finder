@@ -1,0 +1,66 @@
+[access]
+admin_user_ids = [123456789]
+require_admin_approval = true
+
+[limits]
+max_tasks_per_user = 5
+max_channels_per_task = 10
+min_interval_seconds = 60
+max_concurrent_executions = 3
+max_concurrent_executions_per_user = 1
+execution_timeout_seconds = 180
+max_deliveries_per_run = 10
+daily_llm_calls_per_user = 2000
+max_posts_per_channel_per_run = 100
+
+[scheduler]
+tick_seconds = 1
+jitter_seconds = 10
+backoff_base_seconds = 60
+backoff_max_seconds = 900
+suspend_after_failures = 5
+
+[telegram]
+reading_account = "default"
+session_path = "data/default.session"
+mtproto_requests_per_second = 1
+
+[llm]
+# Active provider: "openai", "groq", "gemini", "anthropic", or "ollama"
+provider = "openai"
+
+# Control model: used by Upper Agent for command parsing & keyword expansion
+# Examples:
+#   OpenAI:    "gpt-4o-mini" or "gpt-4o"
+#   Groq:      "llama-3.3-70b-versatile"
+#   Gemini:    "gemini-1.5-flash"
+#   Anthropic: "claude-3-5-haiku-20241022"
+#   Ollama:    "llama3:8b"
+control_model = "gpt-4o-mini"
+
+# Classifier model: fast, cost-effective model for evaluating post relevance
+# Examples:
+#   OpenAI:    "gpt-4o-mini"
+#   Groq:      "llama-3.1-8b-instant"
+#   Gemini:    "gemini-1.5-flash"
+#   Anthropic: "claude-3-5-haiku-20241022"
+#   Ollama:    "llama3:8b"
+classifier_model = "gpt-4o-mini"
+
+control_timeout_seconds = 30
+classifier_timeout_seconds = 20
+max_retries = 2
+repair_retries = 1
+max_post_chars_for_llm = 1500
+
+[llm.providers.openai]
+base_url = "https://api.openai.com/v1"
+
+[llm.providers.groq]
+base_url = "https://api.groq.com/openai/v1"
+
+[llm.providers.gemini]
+base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
+[llm.providers.ollama]
+host = "http://localhost:11434"
