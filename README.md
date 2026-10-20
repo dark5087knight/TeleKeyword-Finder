@@ -17,8 +17,7 @@ Built as a modular Python monolith without LangChain, using direct provider adap
    - Hard filters: Service messages, minimum length, negative keyword exclusions, duplicate text hashing.
    - Keyword prefilter: Fast substring matching against keywords (drops non-matching posts without making LLM calls).
    - LLM Classifier: Evaluates surviving posts with strict JSON schema constraints.
-5. **No LangChain**: Direct, lightweight vendor adapters behind a single `LLMProvider` protocol for complete control over retries, error mapping, and token budgets.
-6. **Telegram Integration**:
+5. **Telegram Integration**:
    - Channel Reading: Read-only Telethon user account session managed in a dedicated process loop.
    - Post Delivery: Forwards matched posts to configured Telegram recipients.
 
@@ -196,21 +195,3 @@ Launch the application to chat directly with the Upper Agent:
 
 ```bash
 python -m tgagent
-```
-
----
-
-## Development Roadmap
-
-- Milestone M0: Package skeleton, configuration, domain models, log redaction filter, interactive chat console, test doubles.
-- Milestone M1: TaskManager core and state machine.
-- Milestone M2: Scheduler and concurrency loop.
-- Milestone M3: Telethon channel reader and session manager.
-- Milestone M4: First end-to-end execution pipeline (keyword filter + delivery).
-- Milestone M5: SQLite persistence and encrypted secrets store.
-- Milestone M6: Multi-vendor LLM provider adapters and relevance classifier.
-- Milestone M7: Natural-language orchestrator with command confirmations.
-- Milestone M8: Hardening, rate limits, and prompt-injection defenses.
-
----
-
