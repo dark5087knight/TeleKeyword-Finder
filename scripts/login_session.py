@@ -7,6 +7,7 @@ Credentials and login codes never pass through the bot or conversational LLM.
 import asyncio
 import os
 from pathlib import Path
+from typing import Any, Awaitable, cast
 from telethon import TelegramClient
 from dotenv import load_dotenv
 
@@ -26,7 +27,12 @@ async def authenticate() -> None:
     session_file = data_dir / "default.session"
 
     client = TelegramClient(str(session_file), int(api_id_raw), api_hash)
-    await client.start()
+    # Telethon's start() returns a coroutine when an event loop is running,
+    # but its static type signature is annotated as TelegramClient instead of Awaitable.
+    if phone:
+        await cast(Awaitable[Any], client.start(phone=phone))
+    else:
+        await cast(Awaitable[Any], client.start())
 
     me = await client.get_me()
     print(f"Successfully authenticated as: {me.first_name} (@{me.username})")
