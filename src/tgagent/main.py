@@ -1,15 +1,10 @@
-"""Application composition root and lifecycle manager.
-
-Handles startup, interactive chat console, dependency wiring, and graceful shutdown.
-"""
-
 from __future__ import annotations
 
 import asyncio
 import logging
 import signal
 import sys
-from typing import Any
+from typing import Any  
 
 from tgagent.config import AppConfig, load_config
 from tgagent.orchestrator.interactive import InteractiveChat

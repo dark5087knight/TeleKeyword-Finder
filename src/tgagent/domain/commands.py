@@ -1,8 +1,3 @@
-"""Command schemas representing the closed tool set emitted by the LLM Orchestrator.
-
-These schemas are validated by Pydantic and executed strictly by deterministic code.
-"""
-
 from typing import Annotated, Literal, Union
 from pydantic import BaseModel, Field
 
