@@ -14,8 +14,8 @@ from dotenv import load_dotenv
 
 async def authenticate() -> None:
     load_dotenv()
-    api_id_raw = os.getenv("TG_API_ID") or os.getenv("TELEGRAM_API_ID")
-    api_hash = os.getenv("TG_API_HASH") or os.getenv("TELEGRAM_API_HASH")
+    api_id_raw = os.getenv("TELEGRAM_API_ID")
+    api_hash = os.getenv("TELEGRAM_API_HASH")
     phone = os.getenv("TELEGRAM_PHONE")
 
     if not api_id_raw or not api_hash:
