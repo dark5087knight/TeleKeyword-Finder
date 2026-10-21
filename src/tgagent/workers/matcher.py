@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import List, Set
+from typing import Set
 
 
 # Common expansions for IT / software engineering roles if broad topics are requested

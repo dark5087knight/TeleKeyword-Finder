@@ -4,7 +4,6 @@ import asyncio
 import logging
 import signal
 import sys
-from typing import Any  
 
 from tgagent.config import AppConfig, load_config
 from tgagent.orchestrator.interactive import InteractiveChat
