@@ -1,194 +1,144 @@
-# TeleKeyword-Finder: Agent-Based Telegram Post Discovery & Orchestration System
+# TeleKeyword-Finder: Multi-Agent Telegram Post Discovery & Orchestration System
 
-An interactive conversational Telegram monitoring and post discovery system. When you launch the application, an interactive chat console opens in your terminal, allowing you to converse directly with the Upper Agent in natural language.
+An intelligent multi-agent Telegram monitoring and semantic post discovery system built on **LangChain** and **LangGraph**.
 
-The Upper Agent receives your monitoring instructions, confirms task parameters, spawns dedicated Sub-Agents to monitor channels via Telethon, filters posts through a multi-stage relevance funnel, and forwards matching posts to your designated Telegram recipients.
-
-Built as a modular Python monolith without LangChain, using direct provider adapters (OpenAI, Groq, Gemini, Anthropic, Ollama) and strict schema validation.
+When you launch the application, an interactive chat console opens in your terminal, allowing you to converse directly with the **Upper Agent (Supervisor)** in natural language. The Supervisor intelligently routes and delegates requests to specialized sub-agents running isolated LangGraph subgraphs.
 
 ---
 
-## Architectural Principles
+## Architecture Overview
 
-1. **Upper Agent Interactive Console**: Chat with the master controller directly in your terminal. You can give monitoring instructions in natural language or use commands (`list`, `status`, `pause`, `resume`, `cancel`).
-2. **Sub-Agent Execution Plane**: For each confirmed monitoring task, the Upper Agent spawns a Sub-Agent worker with dedicated channels, keywords, and recipients.
-3. **Deterministic Execution Plane**: A central scheduler manages task executions under strict concurrency and rate limits. Tasks are stateful data records executed by reusable workers, avoiding unpredictable and expensive perpetual LLM loops.
-4. **Multi-Stage Relevance Funnel**:
-   - Hard filters: Service messages, minimum length, negative keyword exclusions, duplicate text hashing.
-   - Keyword prefilter: Fast substring matching against keywords (drops non-matching posts without making LLM calls).
-   - LLM Classifier: Evaluates surviving posts with strict JSON schema constraints.
-5. **Telegram Integration**:
-   - Channel Reading: Read-only Telethon user account session managed in a dedicated process loop.
-   - Post Delivery: Forwards matched posts to configured Telegram recipients.
-
----
-
-## Agent Communication & Execution Flow
-
-```text
-User (Interactive Terminal Chat)
-    |
-    v
-InteractiveChat Console / Upper Agent
-    |-- Conversational Parser (extracts channels, keywords, recipient)
-    |-- Proposal & User Confirmation Step
-    +-- Spawns Sub-Agents
-            |
-            v
-       TaskManager (State Machine & Single Writer)
-            |
-            v
-     TaskRepository (In-Memory -> SQLite)
-            ^
-            |
-        Scheduler (Tick Loop, Caps, Backoff, Jitter)
-            |
-            v
-   ChannelMonitorWorker (Sub-Agent Execution)
-      |-- PostDiscovery (Telethon: read posts past checkpoint)
-      |-- RelevanceFunnel (Hard Filters -> Keywords -> LLM Classifier)
-      |-- DeliveryService (Forwards matches to recipient)
-      +-- Checkpoint & Execution Recorder
+```mermaid
+graph TD
+    User["User (Terminal / CLI)"] <--> Supervisor["Supervisor Upper Agent<br/>(LangGraph Supervisor)"]
+    
+    subgraph "Specialized Sub-Agents (LangGraph ReAct Subgraphs)"
+        Supervisor <-->|transfer_to_task_manager| TM["Task Manager Agent<br/>(tools/task_tools.py)"]
+        Supervisor <-->|transfer_to_channel_monitor| CM["Channel Monitor Agent<br/>(tools/telegram_tools.py)"]
+        Supervisor <-->|transfer_to_post_analyst| PA["Post Analyst Agent<br/>(tools/analysis_tools.py)"]
+        Supervisor <-->|transfer_to_delivery| D["Delivery Agent<br/>(tools/delivery_tools.py)"]
+    end
+    
+    subgraph "External Integrations"
+        CM --- Telethon["Telegram Client (Telethon MTProto)"]
+        D --- TelegramDelivery["Telegram Alerts Delivery"]
+        PA --- LLMClassifier["LLM Semantic Evaluator"]
+        TM --- TaskStore["In-Memory Task Store"]
+    end
 ```
 
----
+### Specialized Sub-Agents
 
-## Interactive Console Commands
-
-When you run the application, the Upper Agent prompt loop starts:
-
-```text
-==============================================================
-TeleKeyword Finder - Upper Agent Interactive Console
-==============================================================
-You are now chatting with the Upper Agent.
-Give the agent monitoring tasks in natural language, for example:
-  "Monitor @channel1, @channel2 for Python and send them to @myuser"
-
-Commands available:
-  - list              : Show active sub-agents and their tasks
-  - pause <task_id>   : Pause a sub-agent
-  - resume <task_id>  : Resume a sub-agent
-  - cancel <task_id>  : Cancel and remove a sub-agent
-  - status <task_id>  : View sub-agent status and history
-  - help              : Show help message
-  - exit / quit       : Shut down the agent
---------------------------------------------------------------
-
-You: Monitor @tech_jobs, @remote_python for backend and send them to @dev_recruiter
-
-Upper Agent:
-Upper Agent proposal:
-I will spawn a Sub-Agent to monitor the following channels:
-  - Channels: @tech_jobs, @remote_python
-  - Keywords to watch for: backend
-  - Forward matches to: @dev_recruiter
-  - Check interval: 120 seconds
-
-Should I proceed with creating this Sub-Agent? (yes / no)
-
-You: yes
-
-Upper Agent:
-Sub-Agent 'subagent_1' spawned successfully.
-It is now actively monitoring: @tech_jobs, @remote_python
-Filtering for: backend
-Forwarding matches to: @dev_recruiter
-```
+1. **Upper Agent (Supervisor)**: The master coordinator. Evaluates user intent, injects real-time system metrics, and dynamically delegates to sub-agents via handoff tools (`transfer_to_*`).
+2. **Task Manager Sub-Agent**: Handles full task lifecycle (creation, listing, pause, resume, cancellation, diagnostics) via `tools/task_tools.py`.
+3. **Channel Monitor Sub-Agent**: Connects to Telegram channels, resolves usernames, reads unread messages, and registers real-time event listeners via `tools/telegram_tools.py`.
+4. **Post Analyst Sub-Agent**: Performs semantic post relevance evaluation against user natural language criteria, batch evaluations, and fast keyword pre-filtering via `tools/analysis_tools.py`.
+5. **Delivery Sub-Agent**: Formats notifications and dispatches alerts directly to Telegram recipients via `tools/delivery_tools.py`.
 
 ---
 
-## Project Structure
+## Tool System
 
-```text
-├── pyproject.toml              # Build & dependency metadata
-├── README.md                   # System documentation
-├── .env.example                # Environment variables template
-├── settings.example.toml       # System settings & provider configurations
-├── docs/
-│   └── PROJECT_PLAN.md         # Complete architectural specification & roadmap
-├── scripts/
-│   ├── login_session.py        # CLI Telethon account login
-│   └── gen_master_key.py       # Master Fernet encryption key generator
-├── src/tgagent/
-│   ├── __init__.py
-│   ├── __main__.py             # Entry point (python -m tgagent)
-│   ├── main.py                 # Composition root & interactive console runner
-│   ├── config.py               # Pydantic settings & configuration loader
-│   ├── domain/                 # Pure domain models, schemas, enums, errors
-│   │   ├── models.py
-│   │   ├── commands.py
-│   │   └── errors.py
-│   ├── orchestrator/           # Upper Agent conversation & interactive console
-│   │   ├── __init__.py
-│   │   └── interactive.py      # Console chat loop & natural language parser
-│   ├── llm/                    # Provider adapters (OpenAI, Groq, Gemini, Anthropic)
-│   ├── users/                  # User registry, recipient aliases, onboarding
-│   ├── tasks/                  # Task manager, repository, scheduler
-│   ├── workers/                # Execution worker, relevance funnel
-│   ├── telegram/               # Telethon session, source, and delivery
-│   └── security/               # Secret store, access control, log redaction
-```
+All operations are encapsulated into well-structured, typed `@tool` functions:
+
+| Module | Tools | Description |
+|---|---|---|
+| `task_tools.py` | `create_monitoring_task`, `list_active_tasks`, `pause_task`, `resume_task`, `cancel_task`, `get_task_status` | Manages task state and metrics |
+| `telegram_tools.py` | `resolve_telegram_entity`, `fetch_channel_posts`, `get_unread_messages`, `register_realtime_listener` | Telethon client operations |
+| `analysis_tools.py` | `evaluate_post_relevance`, `batch_evaluate_posts`, `keyword_prefilter` | Semantic evaluation & keyword matching |
+| `delivery_tools.py` | `format_post_notification`, `send_alert_to_recipient` | Alert formatting and sending |
 
 ---
 
-## Setup & Getting Started
+## Quick Start
 
-### 1. Prerequisites
+### 1. Requirements
 
 - Python 3.11+
-- Telegram API ID and API Hash from [my.telegram.org](https://my.telegram.org)
+- Telegram API ID & Hash (from https://my.telegram.org)
+- LLM Provider API Key (Groq, OpenAI, Google Gemini, Anthropic, or local Ollama)
 
 ### 2. Installation
 
-Clone the repository and install dependencies in editable mode:
-
 ```bash
-python -m venv .venv
+git clone https://github.com/dark5087knight/TeleKeyword-Finder.git
+cd TeleKeyword-Finder
 
-# On Windows:
-.venv\Scripts\activate
-
-# On Linux/macOS:
-source .venv/bin/activate
-
+# Install dependencies
 pip install -r requirements.txt
-pip install -e .
 ```
 
 ### 3. Configuration
 
-Generate an encryption key for the secret store:
+Copy `.env.example` to `.env` and fill in your credentials:
 
-```bash
-python scripts/gen_master_key.py
+```dotenv
+# Telegram Account Credentials
+TELEGRAM_API_ID=12345678
+TELEGRAM_API_HASH=abcdef0123456789abcdef0123456789
+TELEGRAM_PHONE="+1234567890"
+
+# LLM Provider & Models (groq, openai, gemini, anthropic, ollama)
+LLM_PROVIDER=groq
+GROQ_API_TOKEN=gsk_...
+LLM_CONTROL_MODEL=llama-3.3-70b-versatile
+LLM_CLASSIFIER_MODEL=llama-3.1-8b-instant
+
+# Logging Level
+LOG_LEVEL=INFO
 ```
 
-Copy configuration templates:
+### 4. Telegram Session Login
 
-```bash
-# Windows
-copy .env.example .env
-copy settings.example.toml settings.toml
-
-# Linux/macOS
-cp .env.example .env
-cp settings.example.toml settings.toml
-```
-
-Fill in `.env` with your `TG_API_ID`, `TG_API_HASH`, and `SECRETS_MASTER_KEY`.
-
-### 4. Reading Account Authentication
-
-Authorize the Telethon reading account via interactive CLI:
+If running for the first time, authenticate your Telethon session:
 
 ```bash
 python scripts/login_session.py
 ```
 
-### 5. Running the Application
-
-Launch the application to chat directly with the Upper Agent:
+### 5. Launch Interactive Console
 
 ```bash
-python -m tgagent
+python app.py
+```
+
+---
+
+## Example Usage
+
+```text
+==============================================================
+TeleKeyword Finder - Upper Agent Interactive Console
+==============================================================
+You are now chatting with the Upper Agent powered by LangGraph.
+
+You: Monitor @tech_news and @python_jobs for remote backend Python positions and send matches to @myusername
+
+Upper Agent:
+Monitoring task created successfully.
+- Task ID: subagent_1
+- Channels: @tech_news, @python_jobs
+- Criteria: remote backend Python positions
+- Recipient: @myusername
+
+You: Are there any active sub-agents running right now?
+
+Upper Agent:
+Active Sub-Agents:
+- Task ID: subagent_1 | State: ACTIVE | Channels: @tech_news, @python_jobs | Criteria: 'remote backend Python positions' | Recipient: @myusername | Matches found & delivered: 0
+
+You: Pause subagent_1
+
+Upper Agent:
+Task 'subagent_1' is now PAUSED.
+```
+
+---
+
+## Running Tests
+
+Run the test suite using pytest:
+
+```bash
+python -m pytest tests/test_migration.py -v
+```

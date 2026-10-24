@@ -12,17 +12,19 @@ logger = logging.getLogger("tgagent.telegram.client")
 
 
 def clean_identifier(raw: str) -> str:
-    """Clean channel/user string (e.g. https://t.me/ch -> ch, @ch -> ch)."""
-    text = raw.strip()
+    """Clean channel/user string (e.g. https://t.me/ch -> ch, @ch -> ch, @t.me/ch -> ch)."""
+    text = (raw or "").strip()
+    while text.startswith("@"):
+        text = text[1:].strip()
     if text.startswith("https://t.me/"):
         text = text[13:]
     elif text.startswith("http://t.me/"):
         text = text[12:]
     elif text.startswith("t.me/"):
         text = text[5:]
+    while text.startswith("@"):
+        text = text[1:].strip()
     text = text.split("?")[0].rstrip("/")
-    if text.startswith("@"):
-        text = text[1:]
     return text
 
 
@@ -32,8 +34,14 @@ class TelegramSessionManager:
     def __init__(self, config: AppConfig) -> None:
         self.config = config
         session_file = config.telegram.session_path or "session_file"
-        api_id = config.telegram.api_id or 0
-        api_hash = config.telegram.api_hash or ""
+        try:
+            from pathlib import Path
+            Path(session_file).parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+
+        api_id = config.telegram.api_id or 12345
+        api_hash = config.telegram.api_hash or "dummy_hash"
 
         self.client = TelegramClient(session_file, api_id, api_hash)
         self._is_connected = False
@@ -62,6 +70,13 @@ class TelegramSessionManager:
     async def resolve_entity(self, identifier: str) -> Any:
         """Resolve a channel or username entity."""
         cleaned = clean_identifier(identifier)
+        if cleaned.lower() in ("me", "self"):
+            return await self.client.get_me()
+        try:
+            if cleaned.lstrip("-").isdigit():
+                return await self.client.get_entity(int(cleaned))
+        except Exception:
+            pass
         return await self.client.get_entity(cleaned)
 
     async def disconnect(self) -> None:

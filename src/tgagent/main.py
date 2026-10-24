@@ -19,7 +19,7 @@ class Application:
         self.config = config or load_config()
         self._shutdown_event = asyncio.Event()
         self._is_running = False
-        self.chat = InteractiveChat()
+        self.chat = InteractiveChat(config=self.config)
 
     @property
     def is_running(self) -> bool:

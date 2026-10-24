@@ -18,25 +18,57 @@ class TelegramNotifier:
 
     async def send_alert(
         self,
-        recipient_entity: Any,
-        post_message: Any,
-        channel_name: str,
-        channel_handle: str,
-        matched_topics: list[str],
+        recipient_entity: Any = None,
+        post_message: Any = None,
+        channel_name: str = "",
+        channel_handle: str = "",
+        matched_topics: list[str] | None = None,
         agent_name: str = "",
+        recipient: Any = None,
+        message_id: int = 0,
+        post_text: str = "",
+        match_reason: str = "",
     ) -> bool:
         """Format and send post alert to recipient, preserving media attachments."""
-        msg_id = getattr(post_message, "id", 0)
-        post_text = getattr(post_message, "text", "") or ""
+        target_recipient = recipient_entity if recipient_entity is not None else recipient
+        if target_recipient is None:
+            logger.error("No recipient provided to send_alert.")
+            return False
+
+        if isinstance(target_recipient, str):
+            clean_rec = target_recipient.strip()
+            if clean_rec.lower() in ("me", "@me", "self", "@self"):
+                target_recipient = "me"
+            elif clean_rec.startswith("@"):
+                target_recipient = clean_rec[1:]
+            else:
+                target_recipient = clean_rec
+
+        # Extract message ID and text
+        if post_message is not None:
+            msg_id = getattr(post_message, "id", message_id)
+            text_content = getattr(post_message, "text", post_text) or getattr(post_message, "message", post_text) or ""
+            media = getattr(post_message, "media", None)
+        else:
+            msg_id = message_id
+            text_content = post_text
+            media = None
+
+        # Extract reason/topics
+        reasons = list(matched_topics) if matched_topics else []
+        if match_reason and match_reason not in reasons:
+            reasons.append(match_reason)
+        if not reasons:
+            reasons = ["Relevant to criteria"]
 
         # Construct clickable link
         clean_handle = channel_handle.lstrip("@")
-        post_link = f"https://t.me/{clean_handle}/{msg_id}" if clean_handle else None
+        post_link = f"https://t.me/{clean_handle}/{msg_id}" if clean_handle and msg_id else None
 
         # Build notification header
         agent_line = f"Agent: {agent_name}\n" if agent_name else ""
-        reason_label = "Match Reason" if matched_topics else "Topic"
-        topics_str = ", ".join(matched_topics)
+        reason_label = "Match Reason" if len(reasons) == 1 else "Topics"
+        topics_str = ", ".join(reasons)
         link_line = f"\nLink: {post_link}" if post_link else ""
         header = (
             f"{agent_line}"
@@ -45,25 +77,23 @@ class TelegramNotifier:
             f"{'─' * 30}\n"
         )
 
-        full_message = f"{header}{post_text}"
+        full_message = f"{header}{text_content.strip()}"
         if len(full_message) > 4000:
             full_message = full_message[:3950] + "\n...[truncated]"
 
         try:
-            # Check for media (photo, document, etc.)
-            media = getattr(post_message, "media", None)
-            from telethon.tl.types import MessageMediaWebPage, MessageMediaEmpty
+            from telethon.tl.types import MessageMediaEmpty, MessageMediaWebPage
             has_real_media = media and not isinstance(media, (MessageMediaWebPage, MessageMediaEmpty))
 
             if has_real_media:
                 await self.client.send_file(
-                    recipient_entity,
+                    target_recipient,
                     file=media,
                     caption=full_message,
                 )
             else:
                 await self.client.send_message(
-                    recipient_entity,
+                    target_recipient,
                     message=full_message,
                 )
 

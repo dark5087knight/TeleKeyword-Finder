@@ -1,261 +1,156 @@
-"""Interactive terminal chat interface for communicating directly with the Upper Agent via real LLM."""
+"""Interactive terminal chat interface for communicating directly with the Upper Agent via LangGraph."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import sys
-from datetime import datetime, timezone
 from typing import Any
 
+from tgagent.agents.supervisor import build_supervisor
 from tgagent.config import AppConfig, load_config
-from tgagent.domain.models import (
-    ChannelRef,
-    DesiredState,
-    RuntimeState,
-    Task,
-    TaskConfig,
-    TaskRuntime,
-)
-from tgagent.llm.service import LLMService
+from tgagent.domain.models import Task
+from tgagent.state.checkpointer import create_checkpointer
+from tgagent.state.task_store import TaskStore
 from tgagent.telegram.client import TelegramSessionManager
-from tgagent.workers.monitor import SubAgentWorker
 
-logger = logging.getLogger("tgagent.interactive")
+logger = logging.getLogger("tgagent.orchestrator.interactive")
 
 
 class InteractiveChat:
-    """Console chat session allowing the user to converse with the Upper Agent via LLM."""
+    """Console chat session allowing the user to converse with the Upper Agent Supervisor."""
 
     def __init__(
         self,
         config: AppConfig | None = None,
-        tasks: dict[str, Task] | None = None,
-        llm_service: LLMService | None = None,
+        task_store: TaskStore | None = None,
         session_mgr: TelegramSessionManager | None = None,
+        tasks: dict[str, Task] | None = None,
+        thread_id: str = "interactive_session",
     ) -> None:
         self.config = config or load_config()
-        self.tasks: dict[str, Task] = tasks if tasks is not None else {}
-        self.llm_service = llm_service or LLMService(self.config)
+        self.task_store = task_store or TaskStore(initial_tasks=tasks)
         self.session_mgr = session_mgr or TelegramSessionManager(self.config)
-        self.workers: dict[str, SubAgentWorker] = {}
-        self.conversation_history: list[dict[str, str]] = []
-        self.task_counter = 1
+        self.thread_id = thread_id
+        self.checkpointer = create_checkpointer(self.config)
+
+        # Build the complete multi-agent graph
+        self.graph = build_supervisor(
+            config=self.config,
+            task_store=self.task_store,
+            session_mgr=self.session_mgr,
+            checkpointer=self.checkpointer,
+        )
 
     def print_banner(self) -> None:
         banner = """
 ==============================================================
 TeleKeyword Finder - Upper Agent Interactive Console
 ==============================================================
-You are now chatting with the Upper Agent powered by your LLM.
+You are now chatting with the Upper Agent powered by LangGraph.
 Chat naturally or give monitoring tasks, for example:
   - "Hello, what can you do?"
-  - "Is there any running agents?"
-  - "Monitor @channel1 for Python and send to @myuser"
-  - "Did you find any matches?"
+  - "Are there any running sub-agents?"
+  - "Monitor @channel1 for Python jobs and send to @myuser"
   - "Pause subagent_1"
+  - "Resume subagent_1"
+  - "Cancel subagent_1"
 
 Type 'exit' or 'quit' at any time to shut down.
 --------------------------------------------------------------"""
         print(banner)
 
-    def _get_tasks_summary(self) -> str:
-        """Build a plain-text summary of current tasks for LLM context."""
-        if not self.tasks:
-            return "No active sub-agents currently running."
-
-        lines = ["Active Sub-Agents:"]
-        for tid, t in self.tasks.items():
-            channels = ", ".join(c.handle for c in t.config.channels)
-            topics = ", ".join(t.config.topics)
-            worker = self.workers.get(tid)
-            match_stats = " | Matches found & delivered: 0"
-            if worker:
-                match_stats = f" | Matches found & delivered: {worker.matched_posts_count}"
-                if worker.matched_posts_summary:
-                    match_stats += f" (Recent: {'; '.join(worker.matched_posts_summary[-3:])})"
-
-            lines.append(
-                f"- Task ID: {tid} | State: {t.desired.value.upper()} | "
-                f"Channels: {channels} | Topics: {topics} | Recipient: {t.config.recipient}{match_stats}"
-            )
-        return "\n".join(lines)
-
     async def handle_turn(self, user_input: str) -> str:
-        """Process a message through the LLM and execute any triggered actions."""
+        """Process user input through the supervisor graph and return the synthesized response."""
         text = user_input.strip()
         if not text:
             return "Please enter a message or question for the Upper Agent."
 
-        # Add user turn to conversation history
-        self.conversation_history.append({"role": "user", "content": text})
+        try:
+            result = await self.graph.ainvoke(
+                {"messages": [("user", text)]},
+                config={"configurable": {"thread_id": self.thread_id}},
+            )
 
-        # Keep history to last 12 messages for efficiency
-        if len(self.conversation_history) > 12:
-            self.conversation_history = self.conversation_history[-12:]
+            messages = result.get("messages", [])
+            if not messages:
+                return "No response received from the agent system."
 
-        # Call LLM
-        summary = self._get_tasks_summary()
-        raw_response = await self.llm_service.chat_turn(self.conversation_history, summary)
+            # Find the last message with meaningful content
+            last_msg = None
+            for m in reversed(messages):
+                cnt = getattr(m, "content", "")
+                if (isinstance(cnt, str) and cnt.strip()) or (isinstance(cnt, list) and any(cnt)):
+                    last_msg = m
+                    break
 
-        # Parse and execute any backend actions emitted by the LLM
-        cleaned_response = self._process_actions(raw_response)
+            if last_msg is None:
+                last_msg = messages[-1]
 
-        # Add assistant turn to history
-        self.conversation_history.append({"role": "assistant", "content": cleaned_response})
+            content = getattr(last_msg, "content", "")
 
-        return cleaned_response
+            # If content is a list of blocks (e.g. Claude/Gemini structured text)
+            if isinstance(content, list):
+                text_parts = []
+                for part in content:
+                    if isinstance(part, str):
+                        text_parts.append(part)
+                    elif isinstance(part, dict) and "text" in part:
+                        text_parts.append(part["text"])
+                return "\n".join(text_parts).strip()
 
-    def _process_actions(self, response: str) -> str:
-        """Detect and execute any ACTION blocks emitted by the LLM."""
-        # 1. Check for CREATE_TASK
-        if "ACTION: CREATE_TASK" in response:
-            channels = []
-            topics = []
-            criteria = ""
-            recipient = "@me"
+            return str(content).strip()
 
-            ch_match = re.search(r"CHANNELS:\s*(.+)", response)
-            if ch_match:
-                raw_chs = [c.strip() for c in ch_match.group(1).split(",")]
-                channels = [c if c.startswith("@") else f"@{c}" for c in raw_chs if c]
-
-            crit_match = re.search(r"CRITERIA:\s*(.+)", response)
-            if crit_match:
-                criteria = crit_match.group(1).strip()
-
-            top_match = re.search(r"TOPICS:\s*(.+)", response)
-            if top_match:
-                topics = [t.strip() for t in top_match.group(1).split(",") if t.strip()]
-
-            if not criteria and topics:
-                criteria = ", ".join(topics)
-            elif criteria and not topics:
-                topics = [w for w in criteria.split() if len(w) > 3]
-
-            rec_match = re.search(r"RECIPIENT:\s*([@\w_]+)", response)
-            if rec_match:
-                recipient = rec_match.group(1).strip()
-
-            if channels and (criteria or topics):
-                task_id = f"subagent_{self.task_counter}"
-                self.task_counter += 1
-
-                cfg = TaskConfig(
-                    name=f"Monitor {' '.join((topics or [criteria])[:2])}",
-                    topics=topics or [criteria],
-                    criteria=criteria,
-                    keywords=topics or [criteria],
-                    channels=[ChannelRef(handle=c) for c in channels],
-                    recipient=recipient,
-                    interval_seconds=120,
-                )
-
-                task = Task(
-                    id=task_id,
-                    agent_type="channel_monitor",
-                    owner_id=1,
-                    config=cfg,
-                    desired=DesiredState.ACTIVE,
-                    runtime=TaskRuntime(state=RuntimeState.WAITING),
-                    created_at=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc),
-                )
-                self.tasks[task_id] = task
-
-                # Launch active SubAgentWorker to monitor Telegram with LLM semantic evaluation
-                worker = SubAgentWorker(task, self.session_mgr, llm_service=self.llm_service)
-                self.workers[task_id] = worker
-                asyncio.create_task(worker.start())
-
-                # Strip raw action block from message
-                clean_text = re.sub(
-                    r"ACTION:\s*CREATE_TASK.*?(?=($|\n\n))",
-                    "",
-                    response,
-                    flags=re.DOTALL,
-                ).strip()
-
-                return (
-                    f"{clean_text}\n\n"
-                    f"[System Notification: Sub-Agent '{task_id}' spawned successfully. "
-                    f"Actively monitoring {len(channels)} channel(s) using criteria: '{criteria}', forwarding to {recipient}.]"
-                )
-
-        # 2. Check for PAUSE_TASK
-        pause_match = re.search(r"ACTION:\s*PAUSE_TASK\s+([\w_]+)", response)
-        if pause_match:
-            tid = pause_match.group(1).strip()
-            if tid in self.tasks:
-                self.tasks[tid].desired = DesiredState.PAUSED
-                self.tasks[tid].runtime.state = RuntimeState.STOPPED
-                if tid in self.workers:
-                    self.workers[tid].task.desired = DesiredState.PAUSED
-                clean_text = re.sub(r"ACTION:\s*PAUSE_TASK[^\n]*", "", response).strip()
-                return f"{clean_text}\n\n[System Notification: Sub-Agent '{tid}' is now PAUSED.]"
-
-        # 3. Check for RESUME_TASK
-        resume_match = re.search(r"ACTION:\s*RESUME_TASK\s+([\w_]+)", response)
-        if resume_match:
-            tid = resume_match.group(1).strip()
-            if tid in self.tasks:
-                self.tasks[tid].desired = DesiredState.ACTIVE
-                self.tasks[tid].runtime.state = RuntimeState.WAITING
-                if tid in self.workers:
-                    self.workers[tid].task.desired = DesiredState.ACTIVE
-                clean_text = re.sub(r"ACTION:\s*RESUME_TASK[^\n]*", "", response).strip()
-                return f"{clean_text}\n\n[System Notification: Sub-Agent '{tid}' has RESUMED.]"
-
-        # 4. Check for CANCEL_TASK
-        cancel_match = re.search(r"ACTION:\s*CANCEL_TASK\s+([\w_]+)", response)
-        if cancel_match:
-            tid = cancel_match.group(1).strip()
-            if tid in self.tasks:
-                del self.tasks[tid]
-                if tid in self.workers:
-                    asyncio.create_task(self.workers[tid].stop())
-                    del self.workers[tid]
-                clean_text = re.sub(r"ACTION:\s*CANCEL_TASK[^\n]*", "", response).strip()
-                return f"{clean_text}\n\n[System Notification: Sub-Agent '{tid}' has been TERMINATED.]"
-
-        return response.strip()
+        except Exception as exc:
+            logger.error("Error during agent graph execution: %s", exc, exc_info=True)
+            return f"An error occurred while processing your request: {str(exc)}"
 
     async def run_loop(self) -> None:
-        """Run the interactive console prompt loop."""
+        """Terminal interactive chat loop with real-time response rendering."""
         self.print_banner()
 
-        # Connect Telethon in background
-        try:
-            await self.session_mgr.connect()
-        except Exception as e:
-            logger.warning("Could not pre-connect Telethon: %s", e)
+        # Connect Telegram client in background if credentials present
+        if self.config.telegram.bot_token or self.config.telegram.api_id:
+            try:
+                connected = await self.session_mgr.connect()
+                if connected:
+                    logger.info("Telegram session connected.")
+                else:
+                    print("\n[Notice: Telegram session not logged in. Monitoring tools will require login.]")
+            except Exception as e:
+                logger.warning("Could not connect Telegram session on startup: %s", e)
 
+        # Ensure UTF-8 console output for Windows terminal support (Arabic & multilingual)
+        if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+            try:
+                sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+        if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+            try:
+                sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
+        loop = asyncio.get_running_loop()
         while True:
             try:
-                loop = asyncio.get_running_loop()
                 print("\nYou: ", end="", flush=True)
                 user_msg = await loop.run_in_executor(None, sys.stdin.readline)
-
-                if not user_msg:
-                    break
-
-                cleaned = user_msg.strip()
-                if cleaned.lower() in ("exit", "quit", "q"):
-                    print("\nUpper Agent: Goodbye! Shutting down system.")
-                    break
-
-                if not cleaned:
-                    continue
-
-                response = await self.handle_turn(cleaned)
-                print(f"\nUpper Agent:\n{response}")
-
-            except (KeyboardInterrupt, EOFError):
-                print("\nUpper Agent: Session terminated.")
+            except (EOFError, KeyboardInterrupt):
+                print("\nExiting session...")
                 break
 
-        # Cleanup on exit
-        for worker in self.workers.values():
-            await worker.stop()
-        await self.session_mgr.disconnect()
+            if not user_msg:
+                break
+
+            cleaned = user_msg.strip()
+            if not cleaned:
+                continue
+
+            if cleaned.lower() in ("exit", "quit"):
+                print("Upper Agent: Goodbye!")
+                break
+
+            response = await self.handle_turn(cleaned)
+            print(f"\nUpper Agent:\n{response}")

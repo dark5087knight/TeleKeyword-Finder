@@ -55,6 +55,15 @@ class Role(StrEnum):
     USER = "user"
 
 
+class AgentName(StrEnum):
+    """Names of agents in the multi-agent system."""
+    SUPERVISOR = "supervisor"
+    TASK_MANAGER = "task_manager"
+    CHANNEL_MONITOR = "channel_monitor"
+    POST_ANALYST = "post_analyst"
+    DELIVERY = "delivery"
+
+
 # ---------------------------------------------------------------------------
 # User & Auth Models
 # ---------------------------------------------------------------------------
