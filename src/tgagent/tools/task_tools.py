@@ -17,7 +17,7 @@ def make_task_tools(task_store: TaskStore, monitor_engine: Any = None) -> list[B
         channels: list[str],
         criteria: str,
         recipient: str,
-        interval_seconds: int = 120,
+        interval_seconds: int = 1,
     ) -> str:
         """Create a new Telegram channel monitoring task and start live monitoring.
 
@@ -25,7 +25,7 @@ def make_task_tools(task_store: TaskStore, monitor_engine: Any = None) -> list[B
             channels: List of Telegram channel usernames or handles (e.g. ['@tech_news', '@python_jobs']).
             criteria: Natural language explanation of what posts to track.
             recipient: Telegram username or handle to forward matching posts to (e.g. '@myuser').
-            interval_seconds: Polling check interval in seconds (minimum 60).
+            interval_seconds: Polling check interval in seconds (minimum 1 second).
         """
         try:
             if not channels:

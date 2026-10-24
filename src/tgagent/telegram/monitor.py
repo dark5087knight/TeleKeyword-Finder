@@ -33,6 +33,7 @@ class RealtimeMonitorEngine:
         self.task_store = task_store
         self._handlers: dict[str, Any] = {}
         self._seen_ids: dict[str, Set[int]] = {}
+        self._poll_tasks: dict[str, asyncio.Task[Any]] = {}
 
     async def evaluate_post(self, criteria: str, text: str) -> tuple[bool, str]:
         """Semantically evaluate post text against criteria with LLM and keyword fallbacks."""
@@ -135,6 +136,20 @@ class RealtimeMonitorEngine:
 
             # 3. Startup check: By default, ONLY scan unread (not seen) messages.
             # Do NOT scan old already-seen messages unless explicitly requested.
+            dialog_map: dict[int, Any] = {}
+            try:
+                dialogs = await client.get_dialogs()
+                for d in dialogs:
+                    if getattr(d, "entity", None):
+                        eid = getattr(d.entity, "id", None)
+                        if eid is not None:
+                            dialog_map[eid] = d
+                    did = getattr(d, "id", None)
+                    if did is not None:
+                        dialog_map[did] = d
+            except Exception as ex:
+                logger.warning("[%s] Could not retrieve dialogs list: %s", task.id, ex)
+
             scan_history = any(
                 k in task.config.criteria.lower()
                 for k in ["scan history", "old messages", "past posts", "all messages", "history", "رسائل قديمة", "ارشيف", "سابق"]
@@ -145,7 +160,9 @@ class RealtimeMonitorEngine:
                 ch_title = getattr(ch_ent, "title", str(ch_ent.id))
                 ch_handle = getattr(ch_ent, "username", clean_identifier(str(ch_ent.id))) or ""
 
-                dialog = dialog_map.get(ch_id) if ch_id else None
+                dialog = None
+                if ch_id:
+                    dialog = dialog_map.get(ch_id) or dialog_map.get(-ch_id)
                 unread_count = dialog.unread_count if dialog else 0
 
                 try:
@@ -253,11 +270,70 @@ class RealtimeMonitorEngine:
                 except Exception as ex:
                     logger.error("[%s] Error in real-time message handler: %s", task.id, ex)
 
-            # Store handler reference
+            # 5. Start periodic background recheck loop using task.config.interval_seconds
+            async def periodic_recheck_loop() -> None:
+                interval = max(int(getattr(task.config, "interval_seconds", 1) or 1), 1)
+                logger.info("[%s] Periodic safety-net recheck active every %ds.", task.id, interval)
+                while True:
+                    try:
+                        await asyncio.sleep(interval)
+                        current_task = self.task_store.get(task.id) if self.task_store else task
+                        if not current_task or current_task.desired != DesiredState.ACTIVE:
+                            continue
+
+                        # Check each resolved channel for any new posts that weren't caught by push events
+                        for ch_ent in resolved_channels:
+                            ch_title = getattr(ch_ent, "title", str(ch_ent.id))
+                            ch_handle = getattr(ch_ent, "username", clean_identifier(str(ch_ent.id))) or ""
+
+                            try:
+                                recent = await client.get_messages(ch_ent, limit=5)
+                                for m in reversed(recent):
+                                    if m.id in seen_ids:
+                                        continue
+                                    seen_ids.add(m.id)
+                                    text = (getattr(m, "message", "") or getattr(m, "text", "") or "").strip()
+                                    if not text:
+                                        continue
+
+                                    criteria = current_task.config.criteria
+                                    is_match, reason = await self.evaluate_post(criteria, text)
+                                    if is_match:
+                                        target_rec = recipient_entity or recipient_handle
+                                        await self._dispatch_alert(
+                                            task=current_task,
+                                            msg=m,
+                                            text=text,
+                                            ch_title=ch_title,
+                                            ch_handle=ch_handle,
+                                            recipient_entity=target_rec,
+                                            reason=reason,
+                                        )
+                            except Exception as ch_err:
+                                err_str = str(ch_err)
+                                if "FloodWait" in err_str:
+                                    logger.warning("[%s] Telegram FloodWait encountered during periodic check: %s. Backing off temporarily.", task.id, ch_err)
+                                    await asyncio.sleep(5)
+                                else:
+                                    logger.warning("[%s] Error in periodic channel check for %s: %s", task.id, ch_title, ch_err)
+
+                    except asyncio.CancelledError:
+                        break
+                    except Exception as loop_err:
+                        logger.error("[%s] Error in periodic recheck loop: %s", task.id, loop_err)
+
+            # Store handler and launch periodic polling task
             self.stop_task_monitor(task.id)
             self._handlers[task.id] = on_new_channel_message
+            self._poll_tasks[task.id] = asyncio.create_task(periodic_recheck_loop())
 
-            logger.info("[%s] Actively listening for new messages across %d channel(s).", task.id, len(resolved_channels))
+            configured_interval = max(int(getattr(task.config, "interval_seconds", 1) or 1), 1)
+            logger.info(
+                "[%s] Actively listening for new messages across %d channel(s) (with %ds periodic safety check).",
+                task.id,
+                len(resolved_channels),
+                configured_interval,
+            )
             return True
 
         except Exception as exc:
@@ -308,9 +384,6 @@ class RealtimeMonitorEngine:
         except Exception as ex:
             logger.error("[%s] Error delivering alert: %s", task.id, ex)
 
-        except Exception as ex:
-            logger.error("[%s] Error delivering alert: %s", task.id, ex)
-
     def stop_task_monitor(self, task_id: str) -> None:
         """Unregister event listener and clean up monitoring state for a task."""
         handler = self._handlers.pop(task_id, None)
@@ -320,6 +393,11 @@ class RealtimeMonitorEngine:
                 logger.info("[%s] Real-time event listener removed.", task_id)
             except Exception as e:
                 logger.warning("[%s] Could not cleanly remove event handler: %s", task_id, e)
+
+        poll_t = self._poll_tasks.pop(task_id, None)
+        if poll_t and not poll_t.done():
+            poll_t.cancel()
+            logger.info("[%s] Periodic recheck task cancelled.", task_id)
 
     def pause_task_monitor(self, task_id: str) -> None:
         """Pause monitoring for a task (handler will ignore events)."""

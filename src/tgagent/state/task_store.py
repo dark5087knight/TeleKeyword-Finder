@@ -63,7 +63,7 @@ class TaskStore:
             keywords=topics or [criteria],
             channels=[ChannelRef(handle=c) for c in sanitized_channels],
             recipient=recipient.strip(),
-            interval_seconds=max(interval_seconds, 60),
+            interval_seconds=max(int(interval_seconds or 1), 1),
         )
 
         task = Task(
